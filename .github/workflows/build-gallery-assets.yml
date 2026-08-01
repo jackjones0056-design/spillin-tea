@@ -1,0 +1,88 @@
+name: Build gallery assets
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-gallery-assets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-gallery:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pillow
+        run: python -m pip install --quiet pillow
+
+      - name: Generate twelve JPG files and static gallery
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import base64, io
+
+          root = Path('.')
+          source_path = root / 'assets' / 'gallery-art-sprite.jpg.b64'
+          raw = ''.join(source_path.read_text().split())
+          source = Image.open(io.BytesIO(base64.b64decode(raw))).convert('RGB')
+
+          names = [
+              ('diberville-nights.jpg', "D'Iberville Nights"),
+              ('working-the-coast.jpg', 'Working the Coast'),
+              ('blues-on-the-bayou.jpg', 'Blues on the Bayou'),
+              ('edge-of-the-bay.jpg', 'Edge of the Bay'),
+              ('main-street-glow.jpg', 'Main Street Glow'),
+              ('saltwater-stillness.jpg', 'Saltwater Stillness'),
+              ('tea-on-the-dock.jpg', 'Tea on the Dock'),
+              ('good-friends-live-music.jpg', 'Good Friends & Live Music'),
+              ('first-light-out.jpg', 'First Light Out'),
+              ('oaks-old-songs.jpg', 'Oaks & Old Songs'),
+              ('gulf-coast-vibes.jpg', 'Gulf Coast Vibes'),
+              ('southern-saturday.jpg', 'Southern Saturday'),
+          ]
+          xs = [(15,255),(268,520),(532,773),(784,1028),(1040,1280),(1290,1520)]
+          ys = [(321,620),(677,920)]
+          sx = source.width / 1536
+          sy = source.height / 1024
+
+          out = root / 'assets' / 'gallery'
+          out.mkdir(parents=True, exist_ok=True)
+
+          i = 0
+          for y0, y1 in ys:
+              for x0, x1 in xs:
+                  box = (
+                      round(x0 * sx), round(y0 * sy),
+                      round(x1 * sx), round(y1 * sy)
+                  )
+                  crop = source.crop(box)
+                  crop.save(out / names[i][0], 'JPEG', quality=90, optimize=True, progressive=True)
+                  i += 1
+
+          cards = ''.join(
+              f'<article class="art-card"><img src="assets/gallery/{filename}" alt="{title} artwork" loading="lazy"><h3>{title}</h3></article>'
+              for filename, title in names
+          )
+
+          html = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f3eee4"><title>Gallery | Spillin' Tea</title><meta name="description" content="Original Gulf Coast-inspired artwork for Spillin' Tea."><link rel="stylesheet" href="site.css"><style>.gallery-intro{{max-width:1100px;margin:0 auto 34px}}.gallery-intro p{{color:var(--muted);line-height:1.7}}.art-grid{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}}.art-card{{background:#080706;text-align:center}}.art-card img{{display:block;width:100%;aspect-ratio:4/5;object-fit:cover;background:#17130e;border:1px solid rgba(199,138,47,.45)}}.art-card h3{{font:400 17px/1.15 Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin:10px 4px 2px;color:#f3eee4}}@media(max-width:1100px){{.art-grid{{grid-template-columns:repeat(3,1fr)}}}}@media(max-width:650px){{.art-grid{{grid-template-columns:repeat(2,1fr);gap:10px}}.art-card h3{{font-size:13px}}.content{{width:min(94%,1380px)}}}}</style></head><body><header class="site-header"><a class="brand" href="index.html" aria-label="Spillin' Tea home"><img src="spillin-tea-logo-exact.svg" alt="Spillin' Tea"></a><nav class="tabs" aria-label="Main navigation"><a href="index.html">Home</a><a href="food.html">Food</a><a href="drinks.html">Drinks</a><a href="events.html">Events</a><a href="calendar.html">Calendar</a><a href="venue.html">Venue</a><a href="ink.html">SPILLIN' Ink</a><a href="gallery.html" class="active">Gallery</a></nav><a class="join-tab" href="index.html#signup">Join the Gossip</a></header><main><section class="page-hero" style="background-image:url('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1800&q=85')"><div><span class="kicker">Local art. Local vibes.</span><h1>Gallery</h1><p>South Mississippi waterfronts, music, old oaks and coastal nights.</p></div></section><section class="content"><div class="gallery-intro"><span class="kicker">South Mississippi inspired</span><h2 class="section-title">Original artwork</h2><p>Twelve original pieces inspired by South Mississippi's marshes, working waterfront, live music, old oaks and coastal streets.</p></div><div class="art-grid">{cards}</div></section></main><footer class="site-footer"><div><img src="spillin-tea-logo-exact.svg" alt="Spillin' Tea"><p>Barbeque &amp; Gossip Bar<br>9492 Central Ave<br>D'Iberville, Mississippi</p></div><div><h4>Explore</h4><p><a href="food.html">Food</a><br><a href="drinks.html">Drinks</a><br><a href="events.html">Events</a><br><a href="calendar.html">Calendar</a><br><a href="ink.html">SPILLIN' Ink</a></p></div><div><h4>Gather Here</h4><p>Live music, food specials, brunch, art, watch parties and Gulf Coast nights.</p></div><div><h4>Follow Along</h4><p>@spillinteabbq<br><a href="privacy.html">Privacy Policy</a><br><a href="terms.html">Terms of Service</a></p></div></footer></body></html>'''
+          (root / 'gallery.html').write_text(html)
+          PY
+
+      - name: Commit generated assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gallery.html assets/gallery/
+          git diff --cached --quiet && exit 0
+          git commit -m "Generate real gallery JPG assets"
+          git push
